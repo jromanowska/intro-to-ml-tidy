@@ -8,6 +8,7 @@ library(tidyverse)
 library(AmesHousing)
 library(tidymodels)
 library(tune)
+library(ggplot2)
 
 ames <- make_ames() %>% 
   dplyr::select(-matches("Qu"))
@@ -18,7 +19,7 @@ fit_data <- function(formula, model, data, ...) {
 }
 
 fit_split <- function(formula, model, split, ...) {
-  wf <- workflows::add_model(workflows::add_formula(workflows::workflow(), formula, blueprint = hardhat::default_formula_blueprint(indicators = FALSE, allow_novel_levels = TRUE)), model)
+  wf <- workflows::add_model(workflows::add_formula(workflows::workflow(), formula, blueprint = hardhat::default_formula_blueprint(indicators = "none", allow_novel_levels = TRUE)), model)
   tune::last_fit(wf, split, ...)
 }
 ```
@@ -28,7 +29,9 @@ fit_split <- function(formula, model, split, ...) {
 Write a pipe that creates a learner that uses `lm()` to fit a linear regression. Save it as `lm_spec` and look at the object. What does it return?
 
 ```{r}
-
+lm_spec <- linear_reg() %>%
+  set_engine(engine = "lm")
+lm_spec
 ```
 
 # Your Turn 2
@@ -59,11 +62,15 @@ lm_fit <- fit_data(Sale_Price ~ Gr_Liv_Area,
                    model = lm_spec, 
                    data = ames)
 
-price_pred <- ________ %>% 
-  predict(new_data = ________) %>% 
-  ________
+price_pred <- lm_fit %>% 
+  predict(new_data = ames) %>% 
+  mutate(truth = ames$Sale_Price)
 
 price_pred
+
+ggplot(price_pred, aes(.pred, truth)) +
+  geom_point() +
+  coord_fixed()
 ```
 
 
@@ -94,19 +101,21 @@ Keep `set.seed(100)` at the start of your code.
 ```{r}
 set.seed(100) # Important!
 
-ames_split  <- ________
-ames_train  <- ________
-ames_test   <- ________
+ames_split  <- initial_split(ames, prop = 3/4)
+ames_train  <- training(ames_split)
+ames_test   <- testing(ames_split)
 
 lm_fit      <- fit_data(Sale_Price ~ Gr_Liv_Area, 
                         model = lm_spec, 
-                        data = ________)
+                        data = ames_train)
+lm_fit
 
-price_pred  <- ________ %>% 
-  predict(new_data = ________) %>% 
-  mutate(price_truth = ________)
+price_pred  <- lm_fit %>% 
+  predict(new_data = ames_test) %>% 
+  mutate(price_truth = ames_test$Sale_Price)
 
-rmse(________, truth = ________, estimate = ________)
+rmse_test <- rmse(price_pred, truth = price_truth, estimate = .pred)
+rmse_test
 ```
 
 
@@ -118,25 +127,19 @@ Rewrite your code from the previous exercise using `fit_split()` and `collect_me
 
 2. Fit a linear model to the training set, then use the model to predict new observations from the test set.
 
-3. Extract the rmse- is it the same as what we just calculated in our previous exercise `r round(rmse_test, 0)`?
+3. Extract the rmse- is it the same as what we just calculated in our previous exercise `r round(rmse_test$.estimate, 0)`?
 
 Keep `set.seed(100)` at the start of your code.
 
 ```{r}
-# solution from previous exercise below...
-set.seed(100) # Important!
-
-ames_split  <- initial_split(ames)
-ames_train  <- training(ames_split)
-ames_test   <- testing(ames_split)
-
-lm_fit      <- fit_data(Sale_Price ~ Gr_Liv_Area, 
+lm_fit_split      <- fit_split(Sale_Price ~ Gr_Liv_Area, 
                         model = lm_spec, 
-                        data = ames_train)
+                        split = ames_split)
+lm_fit_split
 
-price_pred  <- lm_fit %>% 
-  predict(new_data = ames_test) %>% 
-  mutate(price_truth = ames_test$Sale_Price)
+price_pred_split  <- lm_fit_split %>% 
+  collect_metrics()
+price_pred_split
 
 rmse(price_pred, truth = price_truth, estimate = .pred)
 ```
@@ -151,15 +154,15 @@ Write a pipe to create a model that uses the rpart package to fit a regression t
 
 ```{r}
 rt_spec <- 
-  __________ %>%          
-  __________ %>% 
-  __________
+  decision_tree() %>%          
+  set_engine(engine = "rpart") %>% 
+  set_mode("regression")
 
 set.seed(100) # Important!
-__________(Sale_Price ~ Gr_Liv_Area, 
-          model = __________, 
-          split = __________) %>% 
-  __________
+fit_split(Sale_Price ~ Gr_Liv_Area, 
+          model = rt_spec, 
+          split = ames_split) %>% 
+  collect_metrics()
 ```
 
 
@@ -170,7 +173,14 @@ Write *another* pipe to create a model that uses the kknn package to fit a K nea
 *Hint: you'll need https://tidymodels.github.io/parsnip/articles/articles/Models.html*
 
 ```{r}
+nn_spec <- nearest_neighbor() %>%
+  set_engine(engine = "kknn") %>%
+  set_mode("regression")
 
+fit_split(Sale_Price ~ Gr_Liv_Area, 
+          model = nn_spec, 
+          split = ames_split) %>% 
+  collect_metrics()
 ```
 
 
