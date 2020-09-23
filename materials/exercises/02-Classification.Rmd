@@ -7,9 +7,10 @@ output: html_document
 library(tidyverse)
 library(tidymodels)
 library(tune)
+library(ggplot2)
 
 fit_split <- function(formula, model, split, ...) {
-  wf <- workflows::add_model(workflows::add_formula(workflows::workflow(), formula, blueprint = hardhat::default_formula_blueprint(indicators = FALSE)), model)
+  wf <- workflows::add_model(workflows::add_formula(workflows::workflow(), formula, blueprint = hardhat::default_formula_blueprint(indicators = "none")), model)
   tune::last_fit(wf, split, ...)
 }
 
@@ -48,10 +49,18 @@ Using the `so_train` and `so_test` datasets, how many individuals in our trainin
 
 ```{r}
 so_train %>% 
-  ____________
+  count(remote)
 
 so_test %>% 
-  ____________
+  count(remote)
+
+so_all_tmp <- bind_rows(
+  so_train %>% mutate(dataset = "train"),
+  so_test %>% mutate(dataset = "test")
+)
+ggplot(so_all_tmp, aes(remote, years_coded_job)) +
+  geom_boxplot() +
+  facet_grid(cols = vars(dataset))
 ```
 
 
@@ -71,13 +80,14 @@ tree_spec <-
   set_engine(engine = "rpart") %>% 
   set_mode("classification")
 
-set.seed(100) # Important!
-tree_fit <- fit_split(________, 
-                      ________, 
-                      ________) 
-
+tree_fit <- fit_split(formula = remote ~ years_coded_job + salary, 
+                      model = tree_spec, 
+                      split = so_split)
 tree_fit %>%   
-  ________
+  collect_metrics()
+
+tree_fit
+tree_fit %>% tidyr::unnest(cols = .predictions)
 ```
 
 # Your Turn 5
@@ -91,8 +101,20 @@ Use `collect_predictions()` and `count()` to count the number of individuals (i.
 
 ```{r}
 tree_fit %>%   
-  ____________ %>% 
-  count(____________, ____________)
+  collect_predictions() %>% 
+  count(.pred_class, remote)
+
+# or using the confusion matrix function:
+tree_fit %>%   
+  collect_predictions() %>% 
+  conf_mat(truth = remote, estimate = .pred_class)
+
+# to show specificity and selectivity:
+fit_split(remote ~ years_coded_job + salary, 
+          model = tree_spec, 
+          split = so_split,
+          metrics = metric_set(accuracy, sens, spec)) %>% # here!
+  collect_metrics()
 ```
 
 # Your Turn 6
@@ -103,8 +125,9 @@ What is the threshold for achieving specificity > .75?
 
 ```{r}
 tree_fit %>%   
-  ____________ %>% 
-  roc_curve(truth = ____________, estimate = ____________)
+  collect_predictions() %>% 
+  roc_curve(truth = remote, estimate = .pred_Remote)
+
 ```
 
 
@@ -113,5 +136,10 @@ tree_fit %>%
 Add a `autoplot()` to visualize the ROC AUC.
 
 ```{r}
+# ROC curve plot
+tree_fit %>%   
+  collect_predictions() %>% 
+  roc_curve(truth = remote, estimate = .pred_Remote) %>%
+  autoplot()
 
 ```
