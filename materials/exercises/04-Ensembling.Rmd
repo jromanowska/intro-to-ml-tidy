@@ -94,7 +94,22 @@ Compare the metrics of the random forest to your two single tree models (vanilla
 *Hint: you'll need https://tidymodels.github.io/parsnip/articles/articles/Models.html*
 
 ```{r}
+set.seed(100) # Important!
+rf_spec <-
+  rand_forest(mode = "classification") %>%
+  set_engine("ranger")
 
+fit_split(remote ~ .,
+          model = rf_spec,
+          split = so_split) %>%
+  collect_metrics()
+
+fit_split(remote ~ .,
+          model = rf_spec,
+          split = so_split) %>%
+  collect_predictions() %>%
+  roc_curve(truth = remote, estimate = .pred_Remote) %>%
+  autoplot()
 ```
 
 # Your Turn 6
@@ -104,19 +119,69 @@ Challenge: Make 4 more random forest model specs, each using 4, 8, 12, and 20 va
 *Hint: you'll need https://tidymodels.github.io/parsnip/reference/rand_forest.html*
 
 ```{r}
-
+mtry_vect <- c(4, 8, 12, 20)
+metrics <- purrr::map(mtry_vect, function(mtry_val){
+  rf_spec <-
+    rand_forest(mtry = mtry_val) %>%
+    set_engine("ranger") %>%
+    set_mode("classification")
+  
+  set.seed(100)
+  fit_split(remote ~ .,
+            model = rf_spec,
+            split = so_split) %>%
+    collect_metrics() %>%
+    mutate(cur_mtry = mtry_val)
+})
+metrics_all <- bind_rows(metrics)
+metrics_all
 ```
 
 ```{r}
-
+ggplot(metrics_all, aes(cur_mtry, .estimate)) +
+  geom_line(aes(group = .metric, color = .metric)) +
+  xlab("mtry") + ylab("estimate")
 ```
 
-```{r}
+# Bagging
 
+```{r}
+treebag_spec <-
+  rand_forest(mtry = .preds()) %>%
+  set_engine("ranger") %>% 
+  set_mode("classification")
+
+set.seed(100)
+fit_split(remote ~ ., 
+          model = treebag_spec,
+          split = so_split) %>% 
+  collect_metrics()
 ```
 
-```{r}
+# Fitting based on importance of variables
 
+```{r}
+rf_imp_spec <-
+  rand_forest(mtry = 4) %>% 
+  set_engine("ranger", importance = 'impurity') %>% 
+  set_mode("classification")
+
+imp_fit <- 
+  fit_split(remote ~ ., 
+            model = rf_imp_spec,
+            split = so_split)
+
+imp_fit
+
+source("04-helpers.R")
+get_tree_fit(imp_fit)
+```
+
+A package to visualize importance of variables: https://koalaverse.github.io/vip/index.html
+
+```{r}
+imp_plot <- get_tree_fit(imp_fit)
+vip::vip(imp_plot, geom = "point")
 ```
 
 
@@ -125,7 +190,16 @@ Challenge: Make 4 more random forest model specs, each using 4, 8, 12, and 20 va
 Make a new model spec called `treebag_imp_spec` to fit a bagged classification tree model. Set the variable `importance` mode to "permutation". Plot the variable importance- which variable was the most important?
 
 ```{r}
+treebag_imp_spec <- rand_forest(mtry = .preds()) %>%
+  set_engine("ranger", importance = "permutation") %>% 
+  set_mode("classification")
 
+set.seed(100)
+treebag_imp_fit <- fit_split(remote ~ ., 
+          model = treebag_imp_spec,
+          split = so_split)
+treebag_imp_plot <- get_tree_fit(treebag_imp_fit)
+vip::vip(treebag_imp_plot, geom = "col")
 ```
 
 
