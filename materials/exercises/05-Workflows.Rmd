@@ -31,15 +31,6 @@ fit_split <- function(object, model, split, ...) {
   }
   tune::last_fit(object, split, ...)
 }
-
-# pca_rec <- 
-#   recipe(Sale_Price ~ ., data = ames) %>%
-#     step_novel(all_nominal()) %>%
-#     step_dummy(all_nominal()) %>%
-#     step_zv(all_predictors()) %>%
-#     step_center(all_predictors()) %>%
-#     step_scale(all_predictors()) %>%
-#     step_pca(all_predictors(), num_comp = 5)
 ```
 
 # Checking "what could go wrong"
