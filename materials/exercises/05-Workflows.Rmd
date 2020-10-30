@@ -20,14 +20,14 @@ ames_test <- testing(ames_split)
 
 fit_data <- function(object, model, data, ...) {
   if (inherits(object, "formula")) {
-    object <- add_model(add_formula(workflow(), object, blueprint = hardhat::default_formula_blueprint(indicators = FALSE, ...)))
+    object <- add_model(add_formula(workflow(), object, blueprint = hardhat::default_formula_blueprint(indicators = "none", ...)))
   }
   fit(object, data, ...)
 }
 
 fit_split <- function(object, model, split, ...) {
   if (inherits(object, "formula")) {
-    object <- add_model(add_formula(workflow(), object, blueprint = hardhat::default_formula_blueprint(indicators = FALSE)), model)
+    object <- add_model(add_formula(workflow(), object, blueprint = hardhat::default_formula_blueprint(indicators = "none")), model)
   }
   tune::last_fit(object, split, ...)
 }
@@ -42,20 +42,53 @@ fit_split <- function(object, model, split, ...) {
 #     step_pca(all_predictors(), num_comp = 5)
 ```
 
+# Checking "what could go wrong"
+
+```{r}
+ames_zsplit <- ames %>% 
+  mutate(z_price = (Sale_Price - mean(Sale_Price)) / sd(Sale_Price)) %>% 
+  initial_split()
+
+ames %>% 
+  mutate(z_price = (Sale_Price - mean(Sale_Price)) / sd(Sale_Price)) %>%
+  select(Sale_Price, z_price)
+
+ames %>% summarise(mean_price = mean(Sale_Price))
+ames %>% summarise(sd_price = sd(Sale_Price))
+ames %>% ggplot(aes(Sale_Price)) +
+  geom_histogram() +
+  geom_vline(xintercept = mean(ames$Sale_Price), color = "red")
+
+rt_spec <- 
+  decision_tree() %>%          
+  set_engine(engine = "rpart") %>% 
+  set_mode("regression")
+
+set.seed(100) # Important!
+fit_split(Sale_Price ~ Gr_Liv_Area, 
+          model = rt_spec, 
+          split = ames_zsplit) %>% 
+  collect_metrics()
+
+```
+
+
 # Your Turn 1
 
 Build a workflow that uses a linear model to predict `Sale_Price` with `Bedrooms_AbvGr`, `Full_Bath` and `Half_Bath` in `ames`. Save it as `bb_wf`.
 
 ```{r}
 lm_spec <- 
-  ___________ %>% 
-  ___________ %>% 
-  ___________
+  linear_reg() %>% 
+  set_engine(engine = "lm") %>% 
+  set_mode("regression")
 
 bb_wf <- 
-  ___________ %>% 
-  ___________ %>% 
-  ___________
+  workflow() %>% 
+  add_model(spec = lm_spec) %>% 
+  add_formula(Sale_Price ~ Bedrooms_AbvGr + Full_Bath + Half_Bath)
+
+bb_wf
 ```
 
 
@@ -68,9 +101,9 @@ Hint: Create a new workflow by updating `bb_wf`.
 ```{r}
 all_wf <- 
   bb_wf %>% 
-  ___________
+  update_formula(Sale_Price ~ .)
 
-___________(all_wf, split = ___________) %>% 
+fit_split(all_wf, split = ames_split) %>% 
   collect_metrics()
 ```
 
@@ -82,15 +115,15 @@ Fill in the blanks to test the regression tree model that predicts `Sale_Price` 
 
 ```{r}
 rt_spec <- 
-  ___________() %>%          
-  set_engine(engine = "___________") %>% 
-  set_mode("___________")
+  decision_tree() %>%          
+  set_engine(engine = "rpart") %>% 
+  set_mode("regression")
 
 rt_wf <- 
-  ___________ %>% 
-  ___________
+  all_wf %>% 
+  update_model(spec = rt_spec)
 
-___________ %>% 
+fit_split(rt_wf, split = ames_split) %>% 
   collect_metrics()
 ```
 
@@ -100,10 +133,30 @@ ___________ %>%
 But what about the predictions of our model? Save the fitted object from your regression tree, and use `collect_predictions()` to see the predictions generated from the test data.
 
 ```{r}
-all_fitwf <- ___________
+all_fitwf <- fit_split(rt_wf, split = ames_split) 
+  # tidyr::unnest(cols = .predictions)
 
-___________ %>% 
-  ___________
+preds <- all_fitwf %>% 
+  collect_predictions()
+preds
+
+axis_lim <- range(c(preds$Sale_Price, preds$.pred))
+ggplot(preds, aes(.pred, Sale_Price)) +
+  geom_point() +
+  xlim(axis_lim) + ylim(axis_lim) +
+  coord_fixed() +
+  geom_abline(slope = 1, intercept = 0, color = "blue")
+
+
+all_fitwf %>% 
+  pluck(".workflow", 1) %>% 
+  pull_workflow_fit()
+
+fitted_tree <- all_fitwf %>% 
+  pluck(".workflow", 1) %>% 
+  pull_workflow_fit() %>%
+  pluck("fit")
+
 ```
 
 
